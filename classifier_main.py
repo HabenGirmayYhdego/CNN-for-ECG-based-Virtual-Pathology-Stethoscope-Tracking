@@ -39,14 +39,13 @@ from keras.layers import Dense, Dropout
 from keras.layers import Input, Conv1D, MaxPooling1D, Flatten, Dense,BatchNormalization
 from keras.layers import LSTM
 from keras.models import Model
-from keras.layers import TransformerEncoder
 from sklearn.metrics import f1_score, accuracy_score
 from matplotlib import pyplot as plt
 from sklearn.metrics import confusion_matrix 
 from sklearn.metrics import accuracy_score 
 from sklearn.metrics import classification_report 
 from sklearn.preprocessing import Normalizer
-
+from keras.layers import Layer,MultiHeadAttention, LayerNormalization
 from sklearn import preprocessing
 
 np.random.seed(7)
@@ -213,41 +212,6 @@ def FCN_Model():
 
     model.summary()
     return model
-
-
-# def LSTM_MOdel():
-#     nclass = 4
-#     inp = Input(shape=(14,1))
-#     img_1 = Convolution1D(8, kernel_size=5, activation=activations.relu, padding='same')(inp)
-#     img_1 = Convolution1D(8, kernel_size=5, activation=activations.relu, padding="same")(img_1)
-#     img_1 = MaxPool1D(pool_size=2)(img_1)
-#     img_1 = Dropout(rate=0.1)(img_1)
-#     img_1 = Convolution1D(16, kernel_size=3, activation=activations.relu, padding="same")(img_1)
-#     img_1 = Convolution1D(16, kernel_size=3, activation=activations.relu, padding="same")(img_1)
-#     img_1 = MaxPool1D(pool_size=2)(img_1)
-#     img_1 = Dropout(rate=0.1)(img_1)
-#     img_1 = Convolution1D(32, kernel_size=3, activation=activations.relu, padding="same")(img_1)
-#     img_1 = Convolution1D(32, kernel_size=3, activation=activations.relu, padding="same")(img_1)
-#     img_1 = MaxPool1D(pool_size=2)(img_1)
-#     img_1 = Dropout(rate=0.1)(img_1)
-#     img_1 = Convolution1D(64, kernel_size=3, activation=activations.relu, padding="same")(img_1)
-#     img_1 = Convolution1D(64, kernel_size=3, activation=activations.relu, padding="same")(img_1)
-#     img_1 = GlobalMaxPool1D()(img_1)
-#     img_1 = Dropout(rate=0.2)(img_1)
-#
-#     dense_1 = Dense(64, activation=activations.relu, name="dense_1")(img_1)
-#     dense_1 = Dense(64, activation=activations.relu, name="dense_2")(dense_1)
-#     dense_1 = Dense(nclass, activation=activations.softmax, name="dense_3_ecg")(dense_1)
-#
-#     model = models.Model(inputs=inp, outputs=dense_1)
-#     opt = optimizers.Adam(0.1)
-#
-#     model.compile(optimizer=opt, loss=losses.sparse_categorical_crossentropy, metrics=['acc'])
-#     model.summary()
-#     return model
-
-
-
 def CNNLSTM_MOdel():
     nclass = 4
     input_features = Input(shape=(14,1))
@@ -272,25 +236,34 @@ def CNNLSTM_MOdel():
 
     model.summary()
     return model
+class TransformerBlock(Layer):
+    def __init__(self, d_model, nhead, dropout=0.1):
+        super(TransformerBlock, self).__init__()
+        self.attn = MultiHeadAttention(d_model, nhead)
+        self.norm1 = LayerNormalization(epsilon=1e-6)
+        self.norm2 = LayerNormalization(epsilon=1e-6)
+        self.dropout = Dropout(dropout)
+
+    def call(self, inputs):
+        attn_output, _ = self.attn(inputs)
+        x = self.dropout(attn_output)
+        x = self.norm1(x + inputs)
+        x = self.norm2(x)
+        return x
+
+
 def Transformer_MOdel():
     nclass = 4
     input_features = Input(shape=(14,1))
-    # Define the first Transformer encoder layer
-    transformer1 = Transformer(num_heads=8, num_layers=4, d_model=64, dff=128, pe_input=timesteps, pe_target=timesteps,
-                               rate=0.1)(input_layer)
+    # Add the Transformer block to the input layer
+    x = TransformerBlock(d_model=128, nhead=8)(input_features)
 
-    # Define the second Transformer encoder layer
-    transformer2 = Transformer(num_heads=8, num_layers=4, d_model=32, dff=64, pe_input=timesteps, pe_target=timesteps,
-                               rate=0.1)(transformer1)
-
-    # Define the output layer
-    output_layer = Dense(num_classes, activation='softmax')(transformer2)
+    # Add a dense layer for classification
+    output_layer = Dense(nclass, activation='softmax')(x)
 
     # Create the model
-    model = Model(inputs=input_layer, outputs=output_layer)
-
-    # Compile the model
-    model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
+    model = Model(input_features, output_layer)
+    model.compile(optimizer='adam', loss='binary_crossentropy')
 
     return model
 
